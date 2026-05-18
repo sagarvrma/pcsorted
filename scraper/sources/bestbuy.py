@@ -38,10 +38,12 @@ def clean_price(price_str):
 def scrape_page(query, page=1):
     url = f"https://www.bestbuy.com/site/searchpage.jsp?st={query.replace(' ', '+')}&cp={page}"
     proxy_url = get_scrapeops_url(url)
+    print(f"  Requesting: {url}")
 
     try:
-        resp = requests.get(proxy_url, timeout=60)
+        resp = requests.get(proxy_url, timeout=120)
         resp.raise_for_status()
+        print(f"  Response: {resp.status_code}, length={len(resp.text)}")
         return resp.text
     except Exception as e:
         print(f"  BestBuy request failed for '{query}' page {page}: {e}")
@@ -88,26 +90,26 @@ def scrape():
     all_items = []
     seen_urls = set()
 
-    # Debug: dump first page to S3 raw folder via print for CI inspection
+    print(f"  SCRAPEOPS_KEY set: {bool(SCRAPEOPS_KEY)}")
+
+    # Debug first page
     first_html = scrape_page("gaming desktop RTX 4060", 1)
     if first_html:
         print(f"  DEBUG: Got HTML length={len(first_html)}")
-        # Check if we got actual product data or a blocked page
         if 'sku-item' in first_html:
-            print("  DEBUG: Found sku-item elements")
+            print("  DEBUG: Found sku-item elements — selectors should work")
         elif 'captcha' in first_html.lower():
             print("  DEBUG: Got captcha page")
         elif 'access denied' in first_html.lower():
             print("  DEBUG: Got access denied")
         else:
-            # Print first 500 chars of body to see what we got
-            from bs4 import BeautifulSoup as BS
-            soup = BS(first_html, 'html.parser')
+            soup = BeautifulSoup(first_html, 'html.parser')
             body = soup.find('body')
             if body:
-                print(f"  DEBUG: Body preview: {body.get_text()[:300]}")
+                print(f"  DEBUG: Body preview: {body.get_text()[:500]}")
     else:
-        print("  DEBUG: Got no HTML at all")
+        print("  DEBUG: Got no HTML at all — request failed")
+        return []
 
     for query in SEARCH_QUERIES:
         print(f"  Scraping Best Buy: {query}")
@@ -118,6 +120,7 @@ def scrape():
 
             items = parse_listings(html)
             if not items:
+                print(f"  No items parsed for '{query}' page {page}")
                 break
 
             for item in items:
