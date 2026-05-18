@@ -3,6 +3,7 @@ import time
 import random
 import os
 import requests
+import boto3
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -45,6 +46,22 @@ def scrape_page(query, page=1):
         resp = requests.get(proxy_url, timeout=120)
         resp.raise_for_status()
         print(f"  Response: {resp.status_code}, length={len(resp.text)}")
+
+        # Save first RTX 4060 page HTML to S3 for inspection
+        if page == 1 and 'RTX+4060' in url:
+            try:
+                s3 = boto3.client('s3')
+                bucket = os.getenv('S3_BUCKET', 'pcsorted-data')
+                s3.put_object(
+                    Bucket=bucket,
+                    Key='debug/bestbuy_page.html',
+                    Body=resp.text.encode('utf-8'),
+                    ContentType='text/html'
+                )
+                print("  Saved HTML to S3 debug/bestbuy_page.html")
+            except Exception as e:
+                print(f"  S3 save failed: {e}")
+
         return resp.text
     except Exception as e:
         print(f"  BestBuy request failed for '{query}' page {page}: {e}")
