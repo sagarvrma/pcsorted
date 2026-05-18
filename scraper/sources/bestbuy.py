@@ -25,7 +25,8 @@ SEARCH_QUERIES = [
 ]
 
 def get_scrapeops_url(url):
-    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=true"
+    # render_wait=5000 tells ScrapeOps to wait 5 seconds after page load
+    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=true&render_wait=5000"
 
 def clean_price(price_str):
     if not price_str:
@@ -75,10 +76,12 @@ def parse_listings(html):
 
     for card in cards:
         try:
+            # Skip skeleton/loading placeholder cards
+            if card.select_one('.skeleton-product-grid-view'):
+                continue
+
             link_elem = card.select_one('a.product-list-item-link')
             title_elem = card.select_one('h3.product-title')
-            price_elem = card.select_one('.priceView-customer-price span, .list-item-price span')
-            img_elem = card.select_one('img')
 
             if not link_elem or not title_elem:
                 continue
@@ -91,13 +94,14 @@ def parse_listings(html):
             if not title or len(title) < 10:
                 continue
 
+            # Price — find dollar amount in card
             price = None
-            if price_elem:
-                price = clean_price(price_elem.get_text(strip=True))
-            if not price:
-                price_text = card.find(string=re.compile(r'\$[\d,]+'))
-                price = clean_price(str(price_text)) if price_text else None
+            price_text = card.find(string=re.compile(r'\$[\d,]+'))
+            if price_text:
+                price = clean_price(str(price_text))
 
+            # Image
+            img_elem = card.select_one('img')
             image_url = img_elem.get('src') if img_elem else None
 
             items.append({
