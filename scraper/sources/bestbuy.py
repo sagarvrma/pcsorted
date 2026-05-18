@@ -88,6 +88,27 @@ def scrape():
     all_items = []
     seen_urls = set()
 
+    # Debug: dump first page to S3 raw folder via print for CI inspection
+    first_html = scrape_page("gaming desktop RTX 4060", 1)
+    if first_html:
+        print(f"  DEBUG: Got HTML length={len(first_html)}")
+        # Check if we got actual product data or a blocked page
+        if 'sku-item' in first_html:
+            print("  DEBUG: Found sku-item elements")
+        elif 'captcha' in first_html.lower():
+            print("  DEBUG: Got captcha page")
+        elif 'access denied' in first_html.lower():
+            print("  DEBUG: Got access denied")
+        else:
+            # Print first 500 chars of body to see what we got
+            from bs4 import BeautifulSoup as BS
+            soup = BS(first_html, 'html.parser')
+            body = soup.find('body')
+            if body:
+                print(f"  DEBUG: Body preview: {body.get_text()[:300]}")
+    else:
+        print("  DEBUG: Got no HTML at all")
+
     for query in SEARCH_QUERIES:
         print(f"  Scraping Best Buy: {query}")
         for page in range(1, 4):
