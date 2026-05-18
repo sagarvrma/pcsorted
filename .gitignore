@@ -5,3 +5,7 @@ __pycache__/
 node_modules/
 .next/
 *.zip
+*.html
+debug_*.py
+test_*.py
+verify*.py
