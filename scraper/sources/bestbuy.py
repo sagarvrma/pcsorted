@@ -12,21 +12,16 @@ load_dotenv()
 
 SCRAPEOPS_KEY = os.getenv('SCRAPEOPS_API_KEY')
 
-SEARCH_QUERIES = [
-    "gaming desktop RTX 4060",
-    "gaming desktop RTX 4070",
-    "gaming desktop RTX 4080",
-    "gaming desktop RTX 3060",
-    "gaming desktop RTX 3070",
-    "prebuilt gaming computer",
-    "CyberPowerPC gaming desktop",
-    "iBUYPOWER gaming desktop",
-    "gaming PC tower",
+CATEGORY_URLS = [
+    "https://www.bestbuy.com/site/pc-gaming/gaming-desktops/pcmcat287600050002.c?cp=1",
+    "https://www.bestbuy.com/site/pc-gaming/gaming-desktops/pcmcat287600050002.c?cp=2",
+    "https://www.bestbuy.com/site/pc-gaming/gaming-desktops/pcmcat287600050002.c?cp=3",
+    "https://www.bestbuy.com/site/pc-gaming/gaming-desktops/pcmcat287600050002.c?cp=4",
+    "https://www.bestbuy.com/site/pc-gaming/gaming-desktops/pcmcat287600050002.c?cp=5",
 ]
 
 def get_scrapeops_url(url):
-    # render_wait=5000 tells ScrapeOps to wait 5 seconds after page load
-    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=true&render_wait=5000"
+    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=true&render_wait=8000"
 
 def clean_price(price_str):
     if not price_str:
@@ -38,8 +33,7 @@ def clean_price(price_str):
     except:
         return None
 
-def scrape_page(query, page=1):
-    url = f"https://www.bestbuy.com/site/searchpage.jsp?st={query.replace(' ', '+')}&cp={page}"
+def scrape_page(url):
     proxy_url = get_scrapeops_url(url)
     print(f"  Requesting: {url}")
 
@@ -48,7 +42,7 @@ def scrape_page(query, page=1):
         resp.raise_for_status()
         print(f"  Response: {resp.status_code}, length={len(resp.text)}")
 
-        if page == 1 and 'RTX+4060' in url:
+        if 'cp=1' in url:
             try:
                 s3 = boto3.client('s3')
                 bucket = os.getenv('S3_BUCKET', 'pcsorted-data')
@@ -64,7 +58,7 @@ def scrape_page(query, page=1):
 
         return resp.text
     except Exception as e:
-        print(f"  BestBuy request failed for '{query}' page {page}: {e}")
+        print(f"  BestBuy request failed for {url}: {e}")
         return None
 
 def parse_listings(html):
@@ -72,14 +66,11 @@ def parse_listings(html):
     items = []
 
     cards = soup.select('li.product-list-item')
-    print(f"  Found {len(cards)} product cards")
+    real_cards = [c for c in cards if not c.select_one('.skeleton-product-grid-view')]
+    print(f"  Found {len(cards)} cards, {len(real_cards)} real")
 
-    for card in cards:
+    for card in real_cards:
         try:
-            # Skip skeleton/loading placeholder cards
-            if card.select_one('.skeleton-product-grid-view'):
-                continue
-
             link_elem = card.select_one('a.product-list-item-link')
             title_elem = card.select_one('h3.product-title')
 
@@ -94,13 +85,9 @@ def parse_listings(html):
             if not title or len(title) < 10:
                 continue
 
-            # Price — find dollar amount in card
-            price = None
             price_text = card.find(string=re.compile(r'\$[\d,]+'))
-            if price_text:
-                price = clean_price(str(price_text))
+            price = clean_price(str(price_text)) if price_text else None
 
-            # Image
             img_elem = card.select_one('img')
             image_url = img_elem.get('src') if img_elem else None
 
@@ -125,28 +112,29 @@ def scrape():
 
     print(f"  SCRAPEOPS_KEY set: {bool(SCRAPEOPS_KEY)}")
 
-    for query in SEARCH_QUERIES:
-        print(f"  Scraping Best Buy: {query}")
-        for page in range(1, 3):
-            html = scrape_page(query, page)
-            if not html:
-                break
+    for url in CATEGORY_URLS:
+        html = scrape_page(url)
+        if not html:
+            continue
 
-            if 'captcha' in html.lower() and len(html) < 50000:
-                print(f"  Captcha detected for '{query}' page {page}, skipping")
-                break
+        if 'captcha' in html.lower() and len(html) < 50000:
+            print(f"  Captcha detected, skipping")
+            continue
 
-            items = parse_listings(html)
-            if not items:
-                print(f"  No items parsed for '{query}' page {page}")
-                break
+        items = parse_listings(html)
 
-            for item in items:
-                if item['url'] not in seen_urls:
-                    seen_urls.add(item['url'])
-                    all_items.append(item)
+        new_count = 0
+        for item in items:
+            if item['url'] not in seen_urls:
+                seen_urls.add(item['url'])
+                all_items.append(item)
+                new_count += 1
 
-            time.sleep(random.uniform(3, 6))
+        print(f"  Added {new_count} new listings")
+
+        if not items:
+            print("  No items — stopping pagination")
+            break
 
         time.sleep(random.uniform(4, 7))
 
