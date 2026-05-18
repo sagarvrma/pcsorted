@@ -3,6 +3,7 @@ import time
 import random
 import os
 import requests
+from urllib.parse import quote
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
@@ -23,7 +24,7 @@ SEARCH_QUERIES = [
 ]
 
 def get_scrapeops_url(url):
-    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={url}&render=true"
+    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=true"
 
 def clean_price(price_str):
     if not price_str:
