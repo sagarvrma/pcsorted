@@ -71,32 +71,48 @@ def parse_listings(html):
     soup = BeautifulSoup(html, 'html.parser')
     items = []
 
-    for card in soup.select('li.sku-item'):
-        try:
-            title_elem = card.select_one('.sku-title a')
-            price_elem = card.select_one('.priceView-customer-price span')
-            img_elem = card.select_one('.product-image img')
+    # Try different selectors for Best Buy's current HTML
+    cards = soup.select('li.sku-item')
+    if not cards:
+        cards = soup.select('[class*="sku-item"]')
+    if not cards:
+        cards = soup.select('li[class*="product"]')
+    if not cards:
+        # Last resort — find all li elements containing product links
+        cards = [li for li in soup.find_all('li') 
+                 if li.find('a', href=lambda h: h and '/product/' in str(h))]
 
-            if not title_elem:
+    print(f"  Found {len(cards)} product cards")
+
+    for card in cards:
+        try:
+            # Find product link
+            link_elem = card.find('a', href=lambda h: h and '/product/' in str(h))
+            if not link_elem:
                 continue
 
-            title = title_elem.get_text(strip=True)
-            href = title_elem.get('href', '')
+            title = link_elem.get_text(strip=True)
+            href = link_elem.get('href', '')
             url = f"https://www.bestbuy.com{href}" if href.startswith('/') else href
 
-            price = clean_price(price_elem.get_text(strip=True)) if price_elem else None
+            # Price — look for any element with dollar amount
+            price_elem = card.find(string=re.compile(r'\$[\d,]+'))
+            price = clean_price(str(price_elem)) if price_elem else None
+
+            # Image
+            img_elem = card.find('img')
             image_url = img_elem.get('src') if img_elem else None
 
-            add_to_cart = card.select_one('.add-to-cart-button')
-            in_stock = add_to_cart is not None and 'sold-out' not in str(add_to_cart).lower()
+            if not title or len(title) < 10:
+                continue
 
             items.append({
-                'external_id': url.split('/')[-1].split('.')[0],
+                'external_id': href.split('/')[-1],
                 'title': title,
                 'url': url,
                 'image_url': image_url,
                 'price': price,
-                'in_stock': in_stock,
+                'in_stock': True,
             })
 
         except Exception as e:
