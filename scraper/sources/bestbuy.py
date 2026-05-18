@@ -47,7 +47,6 @@ def scrape_page(query, page=1):
         resp.raise_for_status()
         print(f"  Response: {resp.status_code}, length={len(resp.text)}")
 
-        # Save first RTX 4060 page HTML to S3 for inspection
         if page == 1 and 'RTX+4060' in url:
             try:
                 s3 = boto3.client('s3')
@@ -71,45 +70,40 @@ def parse_listings(html):
     soup = BeautifulSoup(html, 'html.parser')
     items = []
 
-    # Try different selectors for Best Buy's current HTML
-    cards = soup.select('li.sku-item')
-    if not cards:
-        cards = soup.select('[class*="sku-item"]')
-    if not cards:
-        cards = soup.select('li[class*="product"]')
-    if not cards:
-        # Last resort — find all li elements containing product links
-        cards = [li for li in soup.find_all('li') 
-                 if li.find('a', href=lambda h: h and '/product/' in str(h))]
-
+    cards = soup.select('li.product-list-item')
     print(f"  Found {len(cards)} product cards")
 
     for card in cards:
         try:
-            # Find product link
-            link_elem = card.find('a', href=lambda h: h and '/product/' in str(h))
-            if not link_elem:
+            link_elem = card.select_one('a.product-list-item-link')
+            title_elem = card.select_one('h3.product-title')
+            price_elem = card.select_one('.priceView-customer-price span, .list-item-price span')
+            img_elem = card.select_one('img')
+
+            if not link_elem or not title_elem:
                 continue
 
-            title = link_elem.get_text(strip=True)
             href = link_elem.get('href', '')
             url = f"https://www.bestbuy.com{href}" if href.startswith('/') else href
+            base_url = url.split('?')[0]
 
-            # Price — look for any element with dollar amount
-            price_elem = card.find(string=re.compile(r'\$[\d,]+'))
-            price = clean_price(str(price_elem)) if price_elem else None
-
-            # Image
-            img_elem = card.find('img')
-            image_url = img_elem.get('src') if img_elem else None
-
+            title = title_elem.get('title') or title_elem.get_text(strip=True)
             if not title or len(title) < 10:
                 continue
 
+            price = None
+            if price_elem:
+                price = clean_price(price_elem.get_text(strip=True))
+            if not price:
+                price_text = card.find(string=re.compile(r'\$[\d,]+'))
+                price = clean_price(str(price_text)) if price_text else None
+
+            image_url = img_elem.get('src') if img_elem else None
+
             items.append({
-                'external_id': href.split('/')[-1],
+                'external_id': href.rstrip('/').split('/')[-1],
                 'title': title,
-                'url': url,
+                'url': base_url,
                 'image_url': image_url,
                 'price': price,
                 'in_stock': True,
@@ -118,6 +112,7 @@ def parse_listings(html):
         except Exception as e:
             continue
 
+    print(f"  Parsed {len(items)} valid listings")
     return items
 
 def scrape():
@@ -126,30 +121,15 @@ def scrape():
 
     print(f"  SCRAPEOPS_KEY set: {bool(SCRAPEOPS_KEY)}")
 
-    # Debug first page
-    first_html = scrape_page("gaming desktop RTX 4060", 1)
-    if first_html:
-        print(f"  DEBUG: Got HTML length={len(first_html)}")
-        if 'sku-item' in first_html:
-            print("  DEBUG: Found sku-item elements — selectors should work")
-        elif 'captcha' in first_html.lower():
-            print("  DEBUG: Got captcha page")
-        elif 'access denied' in first_html.lower():
-            print("  DEBUG: Got access denied")
-        else:
-            soup = BeautifulSoup(first_html, 'html.parser')
-            body = soup.find('body')
-            if body:
-                print(f"  DEBUG: Body preview: {body.get_text()[:500]}")
-    else:
-        print("  DEBUG: Got no HTML at all — request failed")
-        return []
-
     for query in SEARCH_QUERIES:
         print(f"  Scraping Best Buy: {query}")
-        for page in range(1, 4):
+        for page in range(1, 3):
             html = scrape_page(query, page)
             if not html:
+                break
+
+            if 'captcha' in html.lower() and len(html) < 50000:
+                print(f"  Captcha detected for '{query}' page {page}, skipping")
                 break
 
             items = parse_listings(html)
@@ -162,9 +142,9 @@ def scrape():
                     seen_urls.add(item['url'])
                     all_items.append(item)
 
-            time.sleep(random.uniform(2, 4))
+            time.sleep(random.uniform(3, 6))
 
-        time.sleep(random.uniform(3, 5))
+        time.sleep(random.uniform(4, 7))
 
     print(f"Best Buy: scraped {len(all_items)} unique listings")
     return all_items
