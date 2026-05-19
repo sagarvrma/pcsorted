@@ -18,7 +18,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests psycopg2-binary python-dotenv boto3 playwright beautifulsoup4
+          pip install --no-cache-dir requests psycopg2-binary python-dotenv boto3 playwright beautifulsoup4
           playwright install chromium --with-deps
 
       - name: Run scraper
