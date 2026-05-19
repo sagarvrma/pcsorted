@@ -82,7 +82,7 @@ def main():
 
     run_source('antonline', antonline.scrape)
     run_source('bestbuy', bestbuy.scrape)
-    # run_source('ebay', ebay.scrape)  # works in CI, blocked locally
+    run_source('ebay', ebay.scrape)  # works in CI, blocked locally
 
     print("\nPipeline complete.")
 

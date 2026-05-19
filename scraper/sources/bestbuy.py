@@ -14,25 +14,52 @@ load_dotenv()
 SCRAPEOPS_KEY = os.getenv('SCRAPEOPS_API_KEY')
 
 SEARCH_QUERIES = [
-    "gaming desktop RTX 4060",
-    "gaming desktop RTX 4070",
+    # RTX 50 series
+    "gaming desktop RTX 5090",
+    "gaming desktop RTX 5080",
+    "gaming desktop RTX 5070 Ti",
+    "gaming desktop RTX 5070",
+    "gaming desktop RTX 5060 Ti",
+    "gaming desktop RTX 5060",
+    # RTX 40 series
+    "gaming desktop RTX 4090",
     "gaming desktop RTX 4080",
-    "gaming desktop RTX 3060",
+    "gaming desktop RTX 4070 Ti",
+    "gaming desktop RTX 4070 Super",
+    "gaming desktop RTX 4070",
+    "gaming desktop RTX 4060 Ti",
+    "gaming desktop RTX 4060",
+    # RTX 30 series
+    "gaming desktop RTX 3090",
+    "gaming desktop RTX 3080",
     "gaming desktop RTX 3070",
-    "prebuilt gaming computer",
-    "CyberPowerPC gaming desktop",
-    "iBUYPOWER gaming desktop",
-    "gaming PC tower",
+    "gaming desktop RTX 3060 Ti",
+    "gaming desktop RTX 3060",
+    # AMD
+    "gaming desktop RX 7900",
+    "gaming desktop RX 7800",
+    "gaming desktop RX 7700",
+    "gaming desktop RX 6800",
+    # Brands
+    "CyberPowerPC desktop",
+    "iBUYPOWER desktop",
+    "MSI gaming desktop",
+    "ASUS gaming desktop",
+    "HP OMEN desktop",
+    "Alienware desktop",
+    "CLX gaming desktop",
+    "Thermaltake gaming desktop",
 ]
 
 def get_scrapeops_url(url):
-    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=false"
+    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=true&render_wait=5000"
 
-def clean_price(price):
-    if not price:
+def clean_price(price_str):
+    if not price_str:
         return None
+    match = re.search(r'[\d,]+\.?\d*', str(price_str).replace(',', ''))
     try:
-        val = float(str(price).replace(',', '').replace('$', ''))
+        val = float(match.group(0))
         return val if 100 <= val <= 10000 else None
     except:
         return None
@@ -43,7 +70,7 @@ def scrape_page(query, page=1):
     print(f"  Requesting: {url}")
 
     try:
-        resp = requests.get(proxy_url, timeout=60)
+        resp = requests.get(proxy_url, timeout=120)
         resp.raise_for_status()
         print(f"  Response: {resp.status_code}, length={len(resp.text)}")
 
@@ -70,93 +97,46 @@ def parse_listings(html):
     soup = BeautifulSoup(html, 'html.parser')
     items = []
 
-    # Extract JSON from script tags
-    scripts = soup.find_all('script', type='application/json')
-    print(f"  Found {len(scripts)} JSON script tags")
+    cards = soup.select('li.product-list-item')
+    real_cards = [c for c in cards if not c.select_one('.skeleton-product-grid-view')]
+    print(f"  Found {len(cards)} cards, {len(real_cards)} real")
 
-    all_products = []
-
-    for script in scripts:
+    for card in real_cards:
         try:
-            data = json.loads(script.string)
-            # Recursively find product arrays
-            find_products(data, all_products)
-        except:
-            continue
+            link_elem = card.select_one('a.product-list-item-link')
+            title_elem = card.select_one('h3.product-title')
 
-    print(f"  Found {len(all_products)} products in JSON")
-
-    for product in all_products:
-        try:
-            name = product.get('name') or product.get('title')
-            sku = str(product.get('sku') or product.get('skuId') or '')
-            price = clean_price(product.get('regularPrice') or product.get('salePrice') or product.get('currentPrice'))
-            image = product.get('image') or product.get('thumbnailImage')
-            if not name or not sku or not price:
+            if not link_elem or not title_elem:
                 continue
-            url = f"https://www.bestbuy.com/site/{sku}.p?skuId={sku}"
+
+            href = link_elem.get('href', '')
+            url = f"https://www.bestbuy.com{href}" if href.startswith('/') else href
+            base_url = url.split('?')[0]
+
+            title = title_elem.get('title') or title_elem.get_text(strip=True)
+            if not title or len(title) < 10:
+                continue
+
+            price_text = card.find(string=re.compile(r'\$[\d,]+'))
+            price = clean_price(str(price_text)) if price_text else None
+
+            img_elem = card.select_one('img')
+            image_url = img_elem.get('src') if img_elem else None
 
             items.append({
-                'external_id': sku,
-                'title': name,
-                'url': url,
-                'image_url': image,
+                'external_id': href.rstrip('/').split('/')[-1],
+                'title': title,
+                'url': base_url,
+                'image_url': image_url,
                 'price': price,
-                'in_stock': product.get('inStoreAvailability', True),
+                'in_stock': True,
             })
-        except:
-            continue
 
-    # Fallback to CSS selectors if JSON parsing found nothing
-    if not items:
-        print("  JSON parsing found nothing, trying CSS selectors")
-        cards = soup.select('li.product-list-item')
-        real_cards = [c for c in cards if not c.select_one('.skeleton-product-grid-view')]
-        print(f"  Found {len(real_cards)} real cards via CSS")
-        for card in real_cards:
-            try:
-                link_elem = card.select_one('a.product-list-item-link')
-                title_elem = card.select_one('h3.product-title')
-                if not link_elem or not title_elem:
-                    continue
-                href = link_elem.get('href', '')
-                url = f"https://www.bestbuy.com{href}" if href.startswith('/') else href
-                title = title_elem.get('title') or title_elem.get_text(strip=True)
-                price_text = card.find(string=re.compile(r'\$[\d,]+'))
-                price = clean_price(str(price_text)) if price_text else None
-                img_elem = card.select_one('img')
-                image_url = img_elem.get('src') if img_elem else None
-                if not title or len(title) < 10:
-                    continue
-                items.append({
-                    'external_id': href.rstrip('/').split('/')[-1],
-                    'title': title,
-                    'url': url.split('?')[0],
-                    'image_url': image_url,
-                    'price': price,
-                    'in_stock': True,
-                })
-            except:
-                continue
+        except Exception as e:
+            continue
 
     print(f"  Parsed {len(items)} valid listings")
     return items
-
-def find_products(data, results, depth=0):
-    if depth > 10:
-        return
-    if isinstance(data, list):
-        for item in data:
-            if isinstance(item, dict) and ('sku' in item or 'skuId' in item) and ('name' in item or 'title' in item):
-                results.append(item)
-            else:
-                find_products(item, results, depth + 1)
-    elif isinstance(data, dict):
-        if ('sku' in data or 'skuId' in data) and ('name' in data or 'title' in data):
-            results.append(data)
-        else:
-            for val in data.values():
-                find_products(val, results, depth + 1)
 
 def scrape():
     all_items = []
@@ -166,28 +146,24 @@ def scrape():
 
     for query in SEARCH_QUERIES:
         print(f"  Scraping Best Buy: {query}")
-        for page in range(1, 3):
-            html = scrape_page(query, page)
-            if not html:
-                break
+        html = scrape_page(query, 1)
+        if not html:
+            continue
 
-            if 'captcha' in html.lower() and len(html) < 50000:
-                print(f"  Captcha detected, skipping")
-                break
+        if 'captcha' in html.lower() and len(html) < 50000:
+            print(f"  Captcha detected, skipping")
+            continue
 
-            items = parse_listings(html)
-            if not items:
-                print(f"  No items for '{query}' page {page}")
-                break
+        items = parse_listings(html)
+        new_count = 0
+        for item in items:
+            if item['url'] not in seen_urls:
+                seen_urls.add(item['url'])
+                all_items.append(item)
+                new_count += 1
+        print(f"  Added {new_count} new listings")
 
-            for item in items:
-                if item['url'] not in seen_urls:
-                    seen_urls.add(item['url'])
-                    all_items.append(item)
-
-            time.sleep(random.uniform(2, 4))
-
-        time.sleep(random.uniform(3, 5))
+        time.sleep(random.uniform(2, 4))
 
     print(f"Best Buy: scraped {len(all_items)} unique listings")
     return all_items
