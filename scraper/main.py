@@ -27,16 +27,18 @@ def upload_raw_to_s3(source, data):
     except Exception as e:
         print(f"S3 upload failed for {source}: {e}")
 
-def run_source(source_name, scrape_fn, conn):
+def run_source(source_name, scrape_fn):
     print(f"\n--- Running {source_name} scraper ---")
     start = time.time()
     rows_ingested = 0
     rows_rejected = 0
+    conn = None
 
     try:
         raw = scrape_fn()
         upload_raw_to_s3(source_name, raw)
 
+        conn = get_conn()  # fresh connection after scraping is done
         for item in raw:
             try:
                 normalized = normalize(item, source_name)
@@ -64,19 +66,24 @@ def run_source(source_name, scrape_fn, conn):
 
     except Exception as e:
         duration = round(time.time() - start, 2)
-        log_pipeline_run(conn, source_name, 0, 0, duration, f'error: {str(e)}')
-        conn.commit()
+        if conn:
+            try:
+                log_pipeline_run(conn, source_name, 0, 0, duration, f'error: {str(e)}')
+                conn.commit()
+            except:
+                pass
         print(f"{source_name} failed: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 def main():
     print(f"PCSorted pipeline starting at {datetime.utcnow().isoformat()}")
-    conn = get_conn()
 
-    run_source('antonline', antonline.scrape, conn)
-    run_source('bestbuy', bestbuy.scrape, conn)
-    # run_source('ebay', ebay.scrape, conn)  # works in CI, blocked locally
+    run_source('antonline', antonline.scrape)
+    run_source('bestbuy', bestbuy.scrape)
+    # run_source('ebay', ebay.scrape)  # works in CI, blocked locally
 
-    conn.close()
     print("\nPipeline complete.")
 
 if __name__ == "__main__":
