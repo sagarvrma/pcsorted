@@ -13,6 +13,30 @@ load_dotenv()
 
 S3_BUCKET = os.getenv('S3_BUCKET', 'pcsorted-data')
 
+TITLE_BLOCKLIST = [
+    # Service listings
+    'read description', 'build service', 'custom build service',
+    'contact me', 'message me', 'see description',
+    'make offer', 'bid now',
+    # Parts/incomplete
+    'parts only', 'for parts', 'parts or repair', 'not working',
+    'broken', 'repair', 'as is', 'as-is', 'untested',
+    'no hdd', 'no hard drive', 'no os', 'no ssd',
+    # Misleading listings
+    'empty case', 'case only', 'shell only',
+    'barebone', 'barebones',
+    # Wrong category items
+    'keyboard only', 'mouse only', 'monitor only',
+    'headset', 'gaming chair', 'desk',
+    'cable only', 'adapter only',
+    'psu only', 'power supply only',
+    'gpu only', 'graphics card only', 'cpu only',
+    'ram only', 'memory only', 'motherboard only',
+    # Scam patterns
+    'like new in box', 'factory sealed new',
+    'wholesale', 'lot of', 'bulk',
+]
+
 def upload_raw_to_s3(source, data):
     try:
         s3 = boto3.client('s3')
@@ -27,6 +51,29 @@ def upload_raw_to_s3(source, data):
     except Exception as e:
         print(f"S3 upload failed for {source}: {e}")
 
+def is_quality_listing(normalized, source):
+    title_lower = normalized['title'].lower()
+
+    # Title blocklist
+    for blocked in TITLE_BLOCKLIST:
+        if blocked in title_lower:
+            return False, f"blocked title: {blocked}"
+
+    # Price floor — raised to $200
+    price = normalized['current_price']
+    if not price or price < 200:
+        return False, f"price too low: {price}"
+
+    # Price ceiling
+    if price > 8000:
+        return False, f"price too high: {price}"
+
+    # Must have a real title
+    if len(normalized['title']) < 15:
+        return False, "title too short"
+
+    return True, "ok"
+
 def run_source(source_name, scrape_fn):
     print(f"\n--- Running {source_name} scraper ---")
     start = time.time()
@@ -38,16 +85,17 @@ def run_source(source_name, scrape_fn):
         raw = scrape_fn()
         upload_raw_to_s3(source_name, raw)
 
-        conn = get_conn()  # fresh connection after scraping is done
+        conn = get_conn()
         for item in raw:
             try:
                 normalized = normalize(item, source_name)
 
-                if not normalized['current_price'] or not normalized['url']:
+                if not normalized['url']:
                     rows_rejected += 1
                     continue
 
-                if normalized['current_price'] < 100 or normalized['current_price'] > 10000:
+                quality, reason = is_quality_listing(normalized, source_name)
+                if not quality:
                     rows_rejected += 1
                     continue
 
@@ -82,7 +130,7 @@ def main():
 
     run_source('antonline', antonline.scrape)
     run_source('bestbuy', bestbuy.scrape)
-    run_source('ebay', ebay.scrape)  # works in CI, blocked locally
+    run_source('ebay', ebay.scrape)
 
     print("\nPipeline complete.")
 

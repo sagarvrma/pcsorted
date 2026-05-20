@@ -31,6 +31,8 @@ SEARCH_QUERIES = [
     "gaming desktop RTX 5060",
 ]
 
+MIN_SELLER_RATING = 97
+
 def get_scrapeops_url(url):
     return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=true&render_wait=3000"
 
@@ -73,12 +75,32 @@ def scrape_page(query):
         print(f"  eBay request failed for '{query}': {e}")
         return None
 
+def get_seller_rating(card):
+    """Extract seller feedback percentage from card."""
+    try:
+        # Look for percentage in seller info
+        seller_text = card.get_text()
+        match = re.search(r'(\d+(?:\.\d+)?)\s*%\s*positive', seller_text, re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+        # Alternative: look for feedback score text
+        match = re.search(r'(\d+(?:\.\d+)?)%', seller_text)
+        if match:
+            rating = float(match.group(1))
+            if 50 <= rating <= 100:  # sanity check it's a rating
+                return rating
+    except:
+        pass
+    return None  # Unknown — don't reject if we can't find it
+
 def parse_listings(html):
     soup = BeautifulSoup(html, 'html.parser')
     items = []
 
     cards = soup.select('li.s-card')
     print(f"  Found {len(cards)} eBay cards")
+
+    skipped_rating = 0
 
     for card in cards:
         try:
@@ -101,6 +123,12 @@ def parse_listings(html):
             if 'Shop on eBay' in title:
                 continue
 
+            # Seller rating check
+            rating = get_seller_rating(card)
+            if rating is not None and rating < MIN_SELLER_RATING:
+                skipped_rating += 1
+                continue
+
             # Price
             price_text = card.find(string=re.compile(r'\$[\d,]+'))
             price = clean_price(str(price_text)) if price_text else None
@@ -121,7 +149,7 @@ def parse_listings(html):
         except Exception as e:
             continue
 
-    print(f"  Parsed {len(items)} valid eBay listings")
+    print(f"  Parsed {len(items)} valid eBay listings (skipped {skipped_rating} low-rated sellers)")
     return items
 
 def scrape():
