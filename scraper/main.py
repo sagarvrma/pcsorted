@@ -13,7 +13,7 @@ load_dotenv()
 
 S3_BUCKET = os.getenv('S3_BUCKET', 'pcsorted-data')
 
-TITLE_BLOCKLIST = [
+EBAY_TITLE_BLOCKLIST = [
     # Service listings
     'read description', 'build service', 'custom build service',
     'contact me', 'message me', 'see description',
@@ -33,7 +33,6 @@ TITLE_BLOCKLIST = [
     'gpu only', 'graphics card only', 'cpu only',
     'ram only', 'memory only', 'motherboard only',
     # Scam patterns
-    'like new in box', 'factory sealed new',
     'wholesale', 'lot of', 'bulk',
 ]
 
@@ -52,25 +51,26 @@ def upload_raw_to_s3(source, data):
         print(f"S3 upload failed for {source}: {e}")
 
 def is_quality_listing(normalized, source):
-    title_lower = normalized['title'].lower()
-
-    # Title blocklist
-    for blocked in TITLE_BLOCKLIST:
-        if blocked in title_lower:
-            return False, f"blocked title: {blocked}"
-
-    # Price floor — raised to $200
     price = normalized['current_price']
-    if not price or price < 200:
-        return False, f"price too low: {price}"
+    title = normalized['title']
 
-    # Price ceiling
+    if not price or not normalized['url']:
+        return False, "no price or url"
+
     if price > 8000:
         return False, f"price too high: {price}"
 
-    # Must have a real title
-    if len(normalized['title']) < 15:
+    if len(title) < 15:
         return False, "title too short"
+
+    # eBay-specific filtering only
+    if source == 'ebay':
+        if price < 200:
+            return False, f"price too low: {price}"
+        title_lower = title.lower()
+        for blocked in EBAY_TITLE_BLOCKLIST:
+            if blocked in title_lower:
+                return False, f"blocked title: {blocked}"
 
     return True, "ok"
 
@@ -89,10 +89,6 @@ def run_source(source_name, scrape_fn):
         for item in raw:
             try:
                 normalized = normalize(item, source_name)
-
-                if not normalized['url']:
-                    rows_rejected += 1
-                    continue
 
                 quality, reason = is_quality_listing(normalized, source_name)
                 if not quality:
