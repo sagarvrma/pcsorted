@@ -77,40 +77,42 @@ def parse_listings(html):
     soup = BeautifulSoup(html, 'html.parser')
     items = []
 
-    cards = soup.select('li.s-item')
+    cards = soup.select('li.s-card')
     print(f"  Found {len(cards)} eBay cards")
 
     for card in cards:
         try:
-            title_elem = card.select_one('.s-item__title')
-            price_elem = card.select_one('.s-item__price')
-            link_elem = card.select_one('a.s-item__link')
-            img_elem = card.select_one('.s-item__image img')
+            link_elem = card.select_one('a.s-card__link')
+            img_elem = card.select_one('img.s-card__image')
 
-            if not all([title_elem, price_elem, link_elem]):
+            if not link_elem:
                 continue
 
-            title = title_elem.get_text(strip=True)
+            href = link_elem.get('href', '')
+            clean_url = href.split('?')[0] if '?' in href else href
+            if not clean_url or 'ebay.com' not in clean_url:
+                clean_url = f"https://www.ebay.com{href}" if href.startswith('/') else href
+
+            # Title from img alt text
+            title = img_elem.get('alt', '') if img_elem else ''
+            if not title or len(title) < 10:
+                continue
+
             if 'Shop on eBay' in title:
                 continue
 
-            url_link = link_elem.get('href', '')
-            clean_url = url_link.split('?')[0] if '?' in url_link else url_link
-
-            price = clean_price(price_elem.get_text(strip=True))
+            # Price
+            price_text = card.find(string=re.compile(r'\$[\d,]+'))
+            price = clean_price(str(price_text)) if price_text else None
             if not price:
                 continue
 
-            image_url = None
-            if img_elem:
-                image_url = img_elem.get('src') or img_elem.get('data-src')
-                if image_url and 'placeholder' in image_url.lower():
-                    image_url = None
+            image_url = img_elem.get('src') if img_elem else None
 
             items.append({
                 'external_id': clean_url.split('/')[-1],
                 'title': title,
-                'url': clean_url,
+                'url': clean_url.split('?')[0],
                 'image_url': image_url,
                 'price': price,
                 'in_stock': True,
