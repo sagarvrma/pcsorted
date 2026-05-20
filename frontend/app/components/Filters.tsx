@@ -165,6 +165,8 @@ export default function FilterPanel({ filters, onChange, onSearch, loading }: Pr
             <option value="ebay" className="bg-gray-900">eBay</option>
             <option value="bestbuy" className="bg-gray-900">Best Buy</option>
             <option value="newegg" className="bg-gray-900">Newegg</option>
+            <option value="walmart" className="bg-gray-900">Walmart</option>
+            <option value="bhphotovideo" className="bg-gray-900">B&H Photo</option>
           </select>
         </div>
 

@@ -5,7 +5,7 @@ import boto3
 from datetime import datetime
 from dotenv import load_dotenv
 
-from scraper.sources import ebay, bestbuy, antonline, newegg
+from scraper.sources import ebay, bestbuy, antonline, newegg, walmart, bhphotovideo
 from scraper.normalizer import normalize
 from scraper.upsert import get_conn, upsert_listing, log_pipeline_run
 
@@ -128,6 +128,8 @@ def main():
     run_source('bestbuy', bestbuy.scrape)
     run_source('ebay', ebay.scrape)
     run_source('newegg', newegg.scrape)
+    run_source('walmart', walmart.scrape)
+    run_source('bhphotovideo', bhphotovideo.scrape)
 
     print("\nPipeline complete.")
 
