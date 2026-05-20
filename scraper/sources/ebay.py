@@ -3,6 +3,7 @@ import time
 import random
 import os
 import requests
+import boto3
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -53,6 +54,20 @@ def scrape_page(query):
         resp = requests.get(proxy_url, timeout=120)
         resp.raise_for_status()
         print(f"  Response: {resp.status_code}, length={len(resp.text)}")
+
+        if 'RTX+4060' in encoded:
+            try:
+                s3 = boto3.client('s3')
+                s3.put_object(
+                    Bucket=os.getenv('S3_BUCKET', 'pcsorted-data'),
+                    Key='debug/ebay_page.html',
+                    Body=resp.text.encode('utf-8'),
+                    ContentType='text/html'
+                )
+                print("  Saved eBay HTML to S3")
+            except Exception as e:
+                print(f"  S3 save failed: {e}")
+
         return resp.text
     except Exception as e:
         print(f"  eBay request failed for '{query}': {e}")
