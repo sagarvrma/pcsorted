@@ -25,7 +25,7 @@ SEARCH_QUERIES = [
 ]
 
 def get_scrapeops_url(url):
-    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=false"
+    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url, safe='')}&render=false"
 
 def clean_price(price_str):
     if not price_str:
@@ -39,7 +39,7 @@ def clean_price(price_str):
 
 def scrape_page(query):
     encoded = query.replace(' ', '+')
-    url = f"https://www.bhphotovideo.com/c/search?Ntt={encoded}&N=4294539008"
+    url = f"https://www.bhphotovideo.com/c/search?Ntt={encoded}"
     proxy_url = get_scrapeops_url(url)
     print(f"  Requesting B&H: {query}")
 
@@ -56,7 +56,6 @@ def parse_listings(html):
     soup = BeautifulSoup(html, 'html.parser')
     items = []
 
-    # B&H product cards
     cards = soup.select('[data-selenium="miniProductPage"]')
     if not cards:
         cards = soup.select('a[href*="/c/product"]')
