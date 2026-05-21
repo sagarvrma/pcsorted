@@ -1,19 +1,31 @@
 import re
 import time
 import random
+import os
 import requests
+from urllib.parse import quote
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
-SEARCH_URLS = [
-    "https://www.bhphotovideo.com/c/search?Ntt=gaming+desktop+RTX+4060&N=4294539008",
-    "https://www.bhphotovideo.com/c/search?Ntt=gaming+desktop+RTX+4070&N=4294539008",
-    "https://www.bhphotovideo.com/c/search?Ntt=gaming+desktop+RTX+4080&N=4294539008",
-    "https://www.bhphotovideo.com/c/search?Ntt=gaming+desktop+RTX+3070&N=4294539008",
-    "https://www.bhphotovideo.com/c/search?Ntt=gaming+desktop+RTX+5070&N=4294539008",
-    "https://www.bhphotovideo.com/c/search?Ntt=CyberPowerPC+desktop&N=4294539008",
-    "https://www.bhphotovideo.com/c/search?Ntt=iBUYPOWER+desktop&N=4294539008",
-    "https://www.bhphotovideo.com/c/search?Ntt=gaming+desktop+RX+7800&N=4294539008",
+load_dotenv()
+
+SCRAPEOPS_KEY = os.getenv('SCRAPEOPS_API_KEY')
+
+SEARCH_QUERIES = [
+    "gaming desktop RTX 4060",
+    "gaming desktop RTX 4070",
+    "gaming desktop RTX 4080",
+    "gaming desktop RTX 3070",
+    "gaming desktop RTX 5070",
+    "gaming desktop RTX 5060",
+    "CyberPowerPC desktop",
+    "iBUYPOWER desktop",
+    "gaming desktop RX 7800",
+    "gaming desktop RX 7900",
 ]
+
+def get_scrapeops_url(url):
+    return f"https://proxy.scrapeops.io/v1/?api_key={SCRAPEOPS_KEY}&url={quote(url)}&render=false"
 
 def clean_price(price_str):
     if not price_str:
@@ -25,15 +37,14 @@ def clean_price(price_str):
     except:
         return None
 
-def scrape_page(url):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-    }
-    print(f"  Requesting B&H: {url.split('Ntt=')[1].split('&')[0].replace('+', ' ')}")
+def scrape_page(query):
+    encoded = query.replace(' ', '+')
+    url = f"https://www.bhphotovideo.com/c/search?Ntt={encoded}&N=4294539008"
+    proxy_url = get_scrapeops_url(url)
+    print(f"  Requesting B&H: {query}")
+
     try:
-        resp = requests.get(url, headers=headers, timeout=30)
+        resp = requests.get(proxy_url, timeout=60)
         resp.raise_for_status()
         print(f"  Response: {resp.status_code}, length={len(resp.text)}")
         return resp.text
@@ -45,28 +56,33 @@ def parse_listings(html):
     soup = BeautifulSoup(html, 'html.parser')
     items = []
 
+    # B&H product cards
     cards = soup.select('[data-selenium="miniProductPage"]')
     if not cards:
-        cards = soup.select('.productNameContainer, [class*="product-name"]')
+        cards = soup.select('a[href*="/c/product"]')
     print(f"  Found {len(cards)} B&H cards")
 
+    seen_urls = set()
     for card in cards:
         try:
-            link_elem = card.select_one('a[href*="/c/product"]') or card.select_one('a')
-            title_elem = card.select_one('[data-selenium="productName"], h3, .name')
-            price_elem = card.select_one('[data-selenium="price"], .price')
-
-            if not link_elem or not title_elem:
+            link_elem = card if card.name == 'a' else card.select_one('a[href*="/c/product"]')
+            if not link_elem:
                 continue
 
             href = link_elem.get('href', '')
             url = f"https://www.bhphotovideo.com{href}" if href.startswith('/') else href
             base_url = url.split('?')[0]
 
-            title = title_elem.get_text(strip=True)
+            if base_url in seen_urls:
+                continue
+            seen_urls.add(base_url)
+
+            title_elem = card.select_one('[data-selenium="productName"], h3, .name, span[class*="title"]')
+            title = title_elem.get_text(strip=True) if title_elem else link_elem.get_text(strip=True)
             if not title or len(title) < 10:
                 continue
 
+            price_elem = card.select_one('[data-selenium="price"], .price, span[class*="price"]')
             price = clean_price(price_elem.get_text(strip=True)) if price_elem else None
 
             img_elem = card.select_one('img')
@@ -91,9 +107,13 @@ def scrape():
     all_items = []
     seen_urls = set()
 
-    for url in SEARCH_URLS:
-        html = scrape_page(url)
+    for query in SEARCH_QUERIES:
+        html = scrape_page(query)
         if not html:
+            continue
+
+        if 'captcha' in html.lower() and len(html) < 50000:
+            print(f"  Captcha detected, skipping")
             continue
 
         items = parse_listings(html)
