@@ -161,7 +161,6 @@ export default function FilterPanel({ filters, onChange, onSearch, loading }: Pr
             className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none"
           >
             <option value="" className="bg-gray-900">All Sources</option>
-            <option value="antonline" className="bg-gray-900">Antonline</option>
             <option value="ebay" className="bg-gray-900">eBay</option>
             <option value="bestbuy" className="bg-gray-900">Best Buy</option>
             <option value="newegg" className="bg-gray-900">Newegg</option>

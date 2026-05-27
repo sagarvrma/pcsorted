@@ -5,7 +5,7 @@ import boto3
 from datetime import datetime
 from dotenv import load_dotenv
 
-from scraper.sources import ebay, bestbuy, antonline, newegg, walmart, bhphotovideo
+from scraper.sources import ebay, bestbuy, newegg, walmart, bhphotovideo
 from scraper.normalizer import normalize
 from scraper.upsert import get_conn, upsert_listing, log_pipeline_run
 
