@@ -1,195 +1,341 @@
-'use client'
+"use client"
 
-import { Filters } from '../types'
-import { SlidersHorizontal } from 'lucide-react'
+import { Loader2, Search, SlidersHorizontal, X } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Slider } from "@/components/ui/slider"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
+import { PRICE_MAX, type FilterState } from "@/app/types"
 
-interface Props {
-  filters: Filters
-  onChange: (filters: Filters) => void
+const GPU_GROUPS = [
+  {
+    label: "RTX 50 Series",
+    options: ["RTX 5090", "RTX 5080", "RTX 5070 Ti", "RTX 5070", "RTX 5060 Ti", "RTX 5060"],
+  },
+  {
+    label: "RTX 40 Series",
+    options: ["RTX 4090", "RTX 4080 Super", "RTX 4080", "RTX 4070 Ti Super", "RTX 4070 Ti", "RTX 4070 Super", "RTX 4070", "RTX 4060 Ti", "RTX 4060"],
+  },
+  {
+    label: "RTX 30 Series",
+    options: ["RTX 3090", "RTX 3080 Ti", "RTX 3080", "RTX 3070 Ti", "RTX 3070", "RTX 3060 Ti", "RTX 3060"],
+  },
+  {
+    label: "RX 7000 Series",
+    options: ["RX 7900 XTX", "RX 7900 XT", "RX 7800 XT", "RX 7700 XT", "RX 7600"],
+  },
+  {
+    label: "RX 6000 Series",
+    options: ["RX 6900 XT", "RX 6800 XT", "RX 6700 XT", "RX 6600 XT", "RX 6600"],
+  },
+]
+
+const CPU_GROUPS = [
+  {
+    label: "Intel Core",
+    options: ["Core Ultra 9", "Core Ultra 7", "Core Ultra 5", "i9", "i7", "i5", "i3"],
+  },
+  {
+    label: "AMD Ryzen",
+    options: ["Ryzen 9", "Ryzen 7", "Ryzen 5"],
+  },
+]
+
+interface SectionProps {
+  title: string
+  count?: number
+  children: React.ReactNode
+}
+
+function FilterSection({ title, count, children }: SectionProps) {
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between h-5">
+        <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-widest">{title}</span>
+        {count != null && count > 0 && (
+          <span className="text-[10px] font-medium bg-zinc-700/80 text-zinc-300 rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center leading-none">
+            {count}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+interface CheckItemProps {
+  id: string
+  label: string
+  checked: boolean
+  onChange: () => void
+}
+
+function CheckItem({ id, label, checked, onChange }: CheckItemProps) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <Checkbox id={id} checked={checked} onCheckedChange={onChange} />
+      <Label
+        htmlFor={id}
+        className={cn(
+          "text-sm font-normal cursor-pointer transition-colors",
+          checked ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+        )}
+      >
+        {label}
+      </Label>
+    </div>
+  )
+}
+
+interface FiltersProps {
+  filters: FilterState
+  onChange: (filters: FilterState) => void
   onSearch: () => void
   loading: boolean
 }
 
-const GPU_OPTIONS = [
-  'RTX 5090', 'RTX 5080', 'RTX 5070 Ti', 'RTX 5070',
-  'RTX 4090', 'RTX 4080', 'RTX 4070 Ti', 'RTX 4070 Super',
-  'RTX 4070', 'RTX 4060 Ti', 'RTX 4060',
-  'RTX 3080', 'RTX 3070', 'RTX 3060',
-  'RX 7900 XTX', 'RX 7800 XT', 'RX 6700 XT',
-]
-
-const CPU_OPTIONS = [
-  'i9', 'i7', 'i5', 'i3',
-  'Ryzen 9', 'Ryzen 7', 'Ryzen 5', 'Ryzen 3',
-]
-
-export default function FilterPanel({ filters, onChange, onSearch, loading }: Props) {
-  const update = (key: keyof Filters, value: string) => {
+export default function FilterPanel({ filters, onChange, onSearch, loading }: FiltersProps) {
+  const set = <K extends keyof FilterState>(key: K, value: FilterState[K]) =>
     onChange({ ...filters, [key]: value })
+
+  const toggle = (key: "gpus" | "cpus" | "conditions" | "sources", value: string) => {
+    const arr = filters[key] as string[]
+    set(key, arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value])
   }
 
+  const clearAll = () =>
+    onChange({
+      gpus: [], cpus: [], minPrice: 0, maxPrice: PRICE_MAX,
+      minRam: "", conditions: [], sources: [], deviceType: "",
+      sort: filters.sort,
+    })
+
+  const activeCount =
+    filters.gpus.length + filters.cpus.length + filters.conditions.length +
+    filters.sources.length + (filters.deviceType ? 1 : 0) + (filters.minRam ? 1 : 0) +
+    (filters.minPrice > 0 || filters.maxPrice < PRICE_MAX ? 1 : 0)
+
+  const priceLabel =
+    filters.minPrice === 0 && filters.maxPrice >= PRICE_MAX
+      ? "Any price"
+      : filters.maxPrice >= PRICE_MAX
+      ? `$${filters.minPrice.toLocaleString()}+`
+      : `$${filters.minPrice.toLocaleString()} – $${filters.maxPrice.toLocaleString()}`
+
   return (
-    <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-6">
-      <div className="flex items-center gap-2 mb-6">
-        <SlidersHorizontal className="w-5 h-5 text-purple-400" />
-        <h2 className="text-white font-semibold text-lg">Filters</h2>
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 h-12 border-b border-zinc-800 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" />
+          <span className="text-sm font-medium text-zinc-300">Filters</span>
+          {activeCount > 0 && (
+            <span className="text-[10px] font-medium bg-zinc-700 text-zinc-300 rounded-full px-1.5 py-0.5">
+              {activeCount}
+            </span>
+          )}
+        </div>
+        {activeCount > 0 && (
+          <button
+            onClick={clearAll}
+            className="flex items-center gap-1 text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+          >
+            <X className="h-3 w-3" /> Clear
+          </button>
+        )}
       </div>
 
-      <div className="space-y-5">
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+
         {/* Device Type */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">Device Type</label>
-          <div className="flex gap-2">
-            {['', 'desktop', 'laptop'].map((t) => (
+        <FilterSection title="Device">
+          <div className="flex rounded-md border border-zinc-800 overflow-hidden text-xs">
+            {[
+              { value: "", label: "All" },
+              { value: "desktop", label: "Desktop" },
+              { value: "laptop", label: "Laptop" },
+            ].map(opt => (
               <button
-                key={t}
-                onClick={() => update('device_type', t)}
-                className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filters.device_type === t
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-white/10 text-white/60 hover:text-white'
-                }`}
+                key={opt.value}
+                onClick={() => set("deviceType", opt.value)}
+                className={cn(
+                  "flex-1 py-1.5 font-medium transition-colors",
+                  filters.deviceType === opt.value
+                    ? "bg-zinc-700 text-zinc-100"
+                    : "bg-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"
+                )}
               >
-                {t === '' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
+                {opt.label}
               </button>
             ))}
           </div>
-        </div>
+        </FilterSection>
+
+        <Separator />
 
         {/* GPU */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">GPU</label>
-          <select
-            value={filters.gpu}
-            onChange={(e) => update('gpu', e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none"
-          >
-            <option value="">Any GPU</option>
-            {GPU_OPTIONS.map((g) => (
-              <option key={g} value={g} className="bg-gray-900">{g}</option>
+        <FilterSection title="GPU" count={filters.gpus.length}>
+          <div className="max-h-56 overflow-y-auto space-y-3.5 pr-0.5">
+            {GPU_GROUPS.map(group => (
+              <div key={group.label}>
+                <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold mb-1.5">
+                  {group.label}
+                </p>
+                <div className="space-y-1.5">
+                  {group.options.map(gpu => (
+                    <CheckItem
+                      key={gpu}
+                      id={`gpu-${gpu}`}
+                      label={gpu}
+                      checked={filters.gpus.includes(gpu)}
+                      onChange={() => toggle("gpus", gpu)}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
-          </select>
-        </div>
+          </div>
+        </FilterSection>
+
+        <Separator />
 
         {/* CPU */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">CPU</label>
-          <select
-            value={filters.cpu}
-            onChange={(e) => update('cpu', e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none"
-          >
-            <option value="">Any CPU</option>
-            {CPU_OPTIONS.map((c) => (
-              <option key={c} value={c} className="bg-gray-900">{c}</option>
+        <FilterSection title="CPU" count={filters.cpus.length}>
+          <div className="space-y-3.5">
+            {CPU_GROUPS.map(group => (
+              <div key={group.label}>
+                <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold mb-1.5">
+                  {group.label}
+                </p>
+                <div className="space-y-1.5">
+                  {group.options.map(cpu => (
+                    <CheckItem
+                      key={cpu}
+                      id={`cpu-${cpu}`}
+                      label={cpu}
+                      checked={filters.cpus.includes(cpu)}
+                      onChange={() => toggle("cpus", cpu)}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
-          </select>
-        </div>
-
-        {/* Price Range */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">Price Range</label>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              value={filters.min_price}
-              onChange={(e) => update('min_price', e.target.value)}
-              placeholder="Min $"
-              className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none placeholder-white/30"
-            />
-            <input
-              type="number"
-              value={filters.max_price}
-              onChange={(e) => update('max_price', e.target.value)}
-              placeholder="Max $"
-              className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none placeholder-white/30"
-            />
           </div>
-        </div>
+        </FilterSection>
+
+        <Separator />
+
+        {/* Price */}
+        <FilterSection title="Price Range">
+          <div className="space-y-3">
+            <div className="text-xs text-zinc-400">{priceLabel}</div>
+            <Slider
+              min={0}
+              max={PRICE_MAX}
+              step={50}
+              value={[filters.minPrice, filters.maxPrice]}
+              onValueChange={([min, max]) => onChange({ ...filters, minPrice: min, maxPrice: max })}
+            />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600 text-xs pointer-events-none">$</span>
+                <input
+                  type="number"
+                  value={filters.minPrice === 0 ? "" : filters.minPrice}
+                  onChange={e => set("minPrice", e.target.value ? Math.max(0, parseInt(e.target.value)) : 0)}
+                  placeholder="Min"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-5 pr-2 py-1.5 text-xs text-zinc-300 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors"
+                />
+              </div>
+              <div className="relative flex-1">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600 text-xs pointer-events-none">$</span>
+                <input
+                  type="number"
+                  value={filters.maxPrice >= PRICE_MAX ? "" : filters.maxPrice}
+                  onChange={e => set("maxPrice", e.target.value ? parseInt(e.target.value) : PRICE_MAX)}
+                  placeholder="Max"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-5 pr-2 py-1.5 text-xs text-zinc-300 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+        </FilterSection>
+
+        <Separator />
 
         {/* RAM */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">Min RAM (GB)</label>
+        <FilterSection title="Min RAM">
           <select
-            value={filters.min_ram}
-            onChange={(e) => update('min_ram', e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none"
+            value={filters.minRam}
+            onChange={e => set("minRam", e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-800 text-zinc-300 text-sm rounded-md px-3 py-1.5 focus:outline-none focus:border-zinc-600 hover:border-zinc-700 transition-colors cursor-pointer"
           >
-            <option value="" className="bg-gray-900">Any</option>
-            {[8, 16, 32, 64].map((r) => (
-              <option key={r} value={r} className="bg-gray-900">{r}GB</option>
+            <option value="">Any RAM</option>
+            {[8, 16, 32, 64].map(r => (
+              <option key={r} value={r}>{r}GB+</option>
             ))}
           </select>
-        </div>
+        </FilterSection>
 
-        {/* Storage */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">Min Storage (GB)</label>
-          <select
-            value={filters.min_storage}
-            onChange={(e) => update('min_storage', e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none"
-          >
-            <option value="" className="bg-gray-900">Any</option>
-            {[256, 512, 1024, 2048].map((s) => (
-              <option key={s} value={s} className="bg-gray-900">{s >= 1024 ? `${s/1024}TB` : `${s}GB`}</option>
-            ))}
-          </select>
-        </div>
+        <Separator />
 
         {/* Condition */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">Condition</label>
-          <select
-            value={filters.condition}
-            onChange={(e) => update('condition', e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none"
-          >
-            <option value="" className="bg-gray-900">Any</option>
-            <option value="new" className="bg-gray-900">New</option>
-            <option value="refurbished" className="bg-gray-900">Refurbished</option>
-            <option value="used" className="bg-gray-900">Used</option>
-          </select>
-        </div>
+        <FilterSection title="Condition" count={filters.conditions.length}>
+          <div className="space-y-1.5">
+            {[
+              { value: "new", label: "New" },
+              { value: "refurbished", label: "Refurbished" },
+              { value: "used", label: "Used" },
+            ].map(c => (
+              <CheckItem
+                key={c.value}
+                id={`cond-${c.value}`}
+                label={c.label}
+                checked={filters.conditions.includes(c.value)}
+                onChange={() => toggle("conditions", c.value)}
+              />
+            ))}
+          </div>
+        </FilterSection>
+
+        <Separator />
 
         {/* Source */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">Source</label>
-          <select
-            value={filters.source}
-            onChange={(e) => update('source', e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none"
-          >
-            <option value="" className="bg-gray-900">All Sources</option>
-            <option value="ebay" className="bg-gray-900">eBay</option>
-            <option value="bestbuy" className="bg-gray-900">Best Buy</option>
-            <option value="newegg" className="bg-gray-900">Newegg</option>
-            <option value="walmart" className="bg-gray-900">Walmart</option>
-            <option value="bhphotovideo" className="bg-gray-900">B&H Photo</option>
-          </select>
-        </div>
+        <FilterSection title="Source" count={filters.sources.length}>
+          <div className="space-y-1.5">
+            {[
+              { value: "ebay", label: "eBay" },
+              { value: "bestbuy", label: "Best Buy" },
+              { value: "newegg", label: "Newegg" },
+              { value: "walmart", label: "Walmart" },
+            ].map(s => (
+              <CheckItem
+                key={s.value}
+                id={`src-${s.value}`}
+                label={s.label}
+                checked={filters.sources.includes(s.value)}
+                onChange={() => toggle("sources", s.value)}
+              />
+            ))}
+          </div>
+        </FilterSection>
 
-        {/* Sort */}
-        <div>
-          <label className="text-white/60 text-sm mb-2 block">Sort By</label>
-          <select
-            value={filters.sort}
-            onChange={(e) => update('sort', e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm outline-none"
-          >
-            <option value="price_asc" className="bg-gray-900">Price: Low to High</option>
-            <option value="price_desc" className="bg-gray-900">Price: High to Low</option>
-            <option value="newest" className="bg-gray-900">Newest</option>
-            <option value="last_seen" className="bg-gray-900">Recently Seen</option>
-          </select>
-        </div>
+      </div>
 
+      {/* Sticky search button */}
+      <div className="p-4 border-t border-zinc-800 flex-shrink-0">
         <button
           onClick={onSearch}
           disabled={loading}
-          className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-3 rounded-xl font-semibold transition-colors"
+          className="w-full flex items-center justify-center gap-2 h-9 rounded-md bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {loading ? 'Searching...' : 'Apply Filters'}
+          {loading ? (
+            <><Loader2 className="h-4 w-4 animate-spin" /> Searching...</>
+          ) : (
+            <><Search className="h-4 w-4" /> Search PCs</>
+          )}
         </button>
       </div>
     </div>

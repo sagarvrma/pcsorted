@@ -124,7 +124,6 @@ def run_source(source_name, scrape_fn):
 def main():
     print(f"PCSorted pipeline starting at {datetime.utcnow().isoformat()}")
 
-    run_source('antonline', antonline.scrape)
     run_source('bestbuy', bestbuy.scrape)
     run_source('ebay', ebay.scrape)
     run_source('newegg', newegg.scrape)

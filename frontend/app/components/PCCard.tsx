@@ -1,110 +1,153 @@
-'use client'
+"use client"
 
-import { Listing } from '../types'
-import { ExternalLink, Cpu, Monitor, HardDrive, MemoryStick } from 'lucide-react'
-import Image from 'next/image'
+import { useState } from "react"
+import { ExternalLink, Monitor, Cpu, MemoryStick, HardDrive, Zap } from "lucide-react"
+import { Badge, badgeVariants } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
+import type { Listing } from "@/app/types"
+import type { VariantProps } from "class-variance-authority"
 
-interface Props {
-  listing: Listing
+const SOURCE_VARIANT: Record<string, VariantProps<typeof badgeVariants>["variant"]> = {
+  ebay: "ebay",
+  "best buy": "bestbuy",
+  bestbuy: "bestbuy",
+  newegg: "newegg",
+  walmart: "walmart",
+  "b&h": "bhphoto",
+  bhphotovideo: "bhphoto",
 }
 
-const SOURCE_COLORS: Record<string, string> = {
-  ebay: 'bg-yellow-500/20 text-yellow-300',
-  bestbuy: 'bg-blue-500/20 text-blue-300',
-  antonline: 'bg-green-500/20 text-green-300',
-  newegg: 'bg-orange-500/20 text-orange-300',
+const SOURCE_LABEL: Record<string, string> = {
+  ebay: "eBay",
+  "best buy": "Best Buy",
+  bestbuy: "Best Buy",
+  newegg: "Newegg",
+  walmart: "Walmart",
+  "b&h": "B&H",
+  bhphotovideo: "B&H Photo",
 }
 
-export default function PCCard({ listing }: Props) {
+const CONDITION_VARIANT: Record<string, VariantProps<typeof badgeVariants>["variant"]> = {
+  new: "new",
+  refurbished: "refurbished",
+  used: "used",
+}
+
+function formatPrice(n: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(n)
+}
+
+function formatStorage(gb: number) {
+  if (gb >= 1000 && gb % 1000 === 0) return `${gb / 1000}TB`
+  if (gb >= 1000) return `${(gb / 1000).toFixed(1)}TB`
+  return `${gb}GB`
+}
+
+export default function PCCard({ listing }: { listing: Listing }) {
+  const [imgFailed, setImgFailed] = useState(false)
+
+  const srcKey = listing.source?.toLowerCase() ?? ""
+  const condKey = listing.condition?.toLowerCase() ?? ""
+  const showCondition = condKey && condKey !== "new"
+
   return (
-    <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl overflow-hidden hover:border-purple-500/40 transition-all hover:shadow-lg hover:shadow-purple-900/20 flex flex-col">
-      <div className="relative aspect-square bg-white/5">
-        {listing.image_url ? (
-          <Image
+    <article className="group flex flex-col rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden transition-all duration-200 hover:border-zinc-700 hover:shadow-xl hover:shadow-black/40">
+      {/* Image */}
+      <div className="relative h-44 bg-zinc-950 flex items-center justify-center overflow-hidden flex-shrink-0">
+        {listing.image_url && !imgFailed ? (
+          <img
             src={listing.image_url}
             alt={listing.title}
-            fill
-            className="object-contain p-4"
-            unoptimized
+            className="w-full h-full object-contain p-3 transition-transform duration-300 group-hover:scale-[1.04]"
+            onError={() => setImgFailed(true)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Monitor className="w-16 h-16 text-white/20" />
-          </div>
+          <Monitor className="h-10 w-10 text-zinc-700" strokeWidth={1.5} />
         )}
-
-        <div className="absolute top-2 right-2">
-          <span
-            className={`text-xs px-2 py-1 rounded-full font-medium ${
-              SOURCE_COLORS[listing.source] || 'bg-white/10 text-white/60'
-            }`}
-          >
-            {listing.source}
-          </span>
-        </div>
-
-        {listing.condition === 'refurbished' && (
-          <div className="absolute top-2 left-2">
-            <span className="text-xs px-2 py-1 rounded-full font-medium bg-yellow-500/20 text-yellow-300">
-              Refurbished
+        {!listing.in_stock && (
+          <div className="absolute inset-0 bg-zinc-950/75 flex items-center justify-center">
+            <span className="text-xs text-zinc-500 border border-zinc-700 px-2 py-0.5 rounded-full">
+              Out of Stock
             </span>
           </div>
         )}
       </div>
 
-      <div className="p-4 flex flex-col flex-1">
-        <h3 className="text-white font-medium text-sm line-clamp-2 mb-3 flex-1">
+      {/* Body */}
+      <div className="flex flex-col flex-1 p-4 gap-3">
+        {/* Badges row */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Badge variant={SOURCE_VARIANT[srcKey] ?? "default"}>
+            {SOURCE_LABEL[srcKey] ?? listing.source}
+          </Badge>
+          {showCondition && (
+            <Badge variant={CONDITION_VARIANT[condKey] ?? "default"} className="capitalize">
+              {listing.condition}
+            </Badge>
+          )}
+        </div>
+
+        {/* Title */}
+        <h3 className="text-sm font-medium text-zinc-200 leading-snug line-clamp-2 min-h-[2.5rem]">
           {listing.title}
         </h3>
 
-        <div className="text-2xl font-bold text-purple-300 mb-3">
-          ${listing.current_price.toLocaleString()}
-        </div>
+        {/* Price */}
+        <p className="text-2xl font-bold text-white tabular-nums tracking-tight">
+          {formatPrice(listing.current_price)}
+        </p>
 
-        <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
+        {/* Spec chips */}
+        <div className="flex flex-wrap gap-1.5">
           {listing.gpu && (
-            <div className="flex items-center gap-1.5 text-white/60">
-              <Monitor className="w-3 h-3" />
-              <span className="truncate">{listing.gpu}</span>
-            </div>
+            <span className={cn(badgeVariants({ variant: "spec" }), "gap-1 flex items-center")}>
+              <Zap className="h-2.5 w-2.5 flex-shrink-0" />
+              {listing.gpu}
+            </span>
           )}
-
           {listing.cpu && (
-            <div className="flex items-center gap-1.5 text-white/60">
-              <Cpu className="w-3 h-3" />
-              <span className="truncate">{listing.cpu}</span>
-            </div>
+            <span className={cn(badgeVariants({ variant: "spec" }), "gap-1 flex items-center")}>
+              <Cpu className="h-2.5 w-2.5 flex-shrink-0" />
+              {listing.cpu}
+            </span>
           )}
-
           {listing.ram_gb && (
-            <div className="flex items-center gap-1.5 text-white/60">
-              <MemoryStick className="w-3 h-3" />
-              <span>{listing.ram_gb}GB RAM</span>
-            </div>
+            <span className={cn(badgeVariants({ variant: "spec" }), "gap-1 flex items-center")}>
+              <MemoryStick className="h-2.5 w-2.5 flex-shrink-0" />
+              {listing.ram_gb}GB
+            </span>
           )}
-
           {listing.storage_gb && (
-            <div className="flex items-center gap-1.5 text-white/60">
-              <HardDrive className="w-3 h-3" />
-              <span>
-                {listing.storage_gb >= 1024
-                  ? `${listing.storage_gb / 1024}TB`
-                  : `${listing.storage_gb}GB`}
-              </span>
-            </div>
+            <span className={cn(badgeVariants({ variant: "spec" }), "gap-1 flex items-center")}>
+              <HardDrive className="h-2.5 w-2.5 flex-shrink-0" />
+              {formatStorage(listing.storage_gb)}
+            </span>
           )}
         </div>
 
+        {/* CTA */}
         <a
           href={listing.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
+          className={cn(
+            "mt-auto flex items-center justify-center gap-1.5 w-full h-8 rounded-md border text-xs font-medium transition-colors",
+            listing.in_stock
+              ? "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white hover:bg-zinc-800"
+              : "border-zinc-800 text-zinc-600 pointer-events-none"
+          )}
+          aria-disabled={!listing.in_stock}
+          tabIndex={listing.in_stock ? 0 : -1}
         >
           View Deal
-          <ExternalLink className="w-3.5 h-3.5" />
+          <ExternalLink className="h-3 w-3" />
         </a>
       </div>
-    </div>
+    </article>
   )
 }

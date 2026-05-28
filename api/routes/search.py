@@ -29,12 +29,23 @@ def search(
     if q:
         filters.append("title ILIKE %s")
         params.append(f"%{q}%")
+
+    # GPU: comma-separated list, OR within group, LIKE matching
     if gpu:
-        filters.append("gpu ILIKE %s")
-        params.append(f"%{gpu}%")
+        gpu_list = [g.strip() for g in gpu.split(",") if g.strip()]
+        if gpu_list:
+            gpu_clauses = " OR ".join(["gpu ILIKE %s"] * len(gpu_list))
+            filters.append(f"({gpu_clauses})")
+            params.extend([f"%{g}%" for g in gpu_list])
+
+    # CPU: comma-separated list, OR within group, LIKE matching
     if cpu:
-        filters.append("cpu ILIKE %s")
-        params.append(f"%{cpu}%")
+        cpu_list = [c.strip() for c in cpu.split(",") if c.strip()]
+        if cpu_list:
+            cpu_clauses = " OR ".join(["cpu ILIKE %s"] * len(cpu_list))
+            filters.append(f"({cpu_clauses})")
+            params.extend([f"%{c}%" for c in cpu_list])
+
     if min_price is not None:
         filters.append("current_price >= %s")
         params.append(min_price)
@@ -47,23 +58,38 @@ def search(
     if min_storage is not None:
         filters.append("storage_gb >= %s")
         params.append(min_storage)
+
+    # Source: comma-separated, OR within group
     if source:
-        filters.append("source = %s")
-        params.append(source)
+        source_list = [s.strip() for s in source.split(",") if s.strip()]
+        if source_list:
+            source_clauses = " OR ".join(["source = %s"] * len(source_list))
+            filters.append(f"({source_clauses})")
+            params.extend(source_list)
+
+    # Condition: comma-separated, OR within group
     if condition:
-        filters.append("condition = %s")
-        params.append(condition)
+        condition_list = [c.strip() for c in condition.split(",") if c.strip()]
+        if condition_list:
+            condition_clauses = " OR ".join(["condition = %s"] * len(condition_list))
+            filters.append(f"({condition_clauses})")
+            params.extend(condition_list)
+
     if device_type:
         filters.append("device_type = %s")
         params.append(device_type)
 
-    where = "WHERE " + " AND ".join(filters) if filters else ""
+    # Always filter out null prices
+    filters.append("current_price IS NOT NULL")
+
+    where = "WHERE " + " AND ".join(filters)
 
     sort_map = {
         "price_asc": "current_price ASC",
         "price_desc": "current_price DESC",
         "newest": "created_at DESC",
         "last_seen": "last_seen_at DESC",
+        "recently_seen": "last_seen_at DESC",
     }
     order = sort_map.get(sort, "current_price ASC")
 
@@ -74,25 +100,15 @@ def search(
             ram_gb, storage_gb, current_price, last_seen_at
         FROM listings
         {where}
-        AND current_price IS NOT NULL
         ORDER BY {order}
         LIMIT %s OFFSET %s
     """
 
-    # Fix WHERE clause if no filters
-    if not filters:
-        sql = sql.replace("AND current_price IS NOT NULL", "WHERE current_price IS NOT NULL")
+    count_sql = f"SELECT COUNT(*) FROM listings {where}"
 
     params.extend([limit, offset])
     cur.execute(sql, params)
     results = cur.fetchall()
-
-    # Get total count
-    count_sql = f"SELECT COUNT(*) FROM listings {where}"
-    if not filters:
-        count_sql += " WHERE current_price IS NOT NULL"
-    else:
-        count_sql += " AND current_price IS NOT NULL"
 
     cur.execute(count_sql, params[:-2])
     total = cur.fetchone()['count']

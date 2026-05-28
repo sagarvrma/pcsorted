@@ -23,31 +23,28 @@ export interface SearchResponse {
   results: Listing[]
 }
 
-export interface Filters {
-  q: string
-  gpu: string
-  cpu: string
-  min_price: string
-  max_price: string
-  min_ram: string
-  min_storage: string
-  source: string
-  condition: string
-  device_type: string
+export const PRICE_MAX = 10000
+
+export interface FilterState {
+  gpus: string[]
+  cpus: string[]
+  minPrice: number
+  maxPrice: number
+  minRam: string
+  conditions: string[]
+  sources: string[]
+  deviceType: string
   sort: string
 }
 
-export interface NLPResponse {
-  filters: {
-    max_price: number | null
-    min_price: number | null
-    min_ram_gb: number | null
-    min_storage_gb: number | null
-    gpu: string | null
-    cpu: string | null
-    condition: string | null
-    device_type: string | null
-    reasoning: string
-  }
-  reasoning: string
+export const DEFAULT_FILTERS: FilterState = {
+  gpus: [],
+  cpus: [],
+  minPrice: 0,
+  maxPrice: PRICE_MAX,
+  minRam: "",
+  conditions: [],
+  sources: [],
+  deviceType: "",
+  sort: "price_asc",
 }
